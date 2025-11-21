@@ -3,6 +3,7 @@ from fpdf import FPDF
 from datetime import datetime, timedelta, timezone
 from time import sleep
 import sys
+import json
 
 # === CONFIGURATION ===
 RISK_PCT = 0.015
@@ -250,11 +251,11 @@ def main():
             print("\nSIGNALS FOUND:\n" + msg)
 
             # PDF
+            fname = f"signals_{datetime.now(tz_utc3).strftime('%Y%m%d_%H%M%S')}.pdf"
             pdf = SignalPDF()
             pdf.add_page()
             for s in signals:
                 pdf.add_signal(s)
-            fname = f"Bybit_Signals_{datetime.now(tz_utc3).strftime('%Y%m%d_%H%M')}.pdf"
             pdf.output(fname)
             print(f"PDF saved → {fname}")
 
@@ -263,7 +264,15 @@ def main():
             send_discord(header + "\n\n" + msg)
             send_telegram("*" + header + "*\n\n" + msg)
             print("Alerts sent!\n")
+
+            # Save latest signals to JSON
+            try:
+                with open("latest_signals.json", "w") as f:
+                    json.dump(signals, f)
+            except Exception:
+                pass
         else:
+            print("No strong aligned signals right now.\n")
             print("No strong aligned signals right now.\n")
 
         # 15-minute wait
@@ -272,15 +281,9 @@ def main():
             sys.stdout.write(f"\rNext scan in {m:02d}:{s:02d}")
             sys.stdout.flush()
             sleep(1)
-        print("\n")
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
         print("\nScanner stopped by user.")
-
-    # At the end of main() when signals found:
-if signals:
-    with open("latest_signals.json", "w") as f:
-        json.dump(signals, f)
