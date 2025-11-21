@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Golden Lion — XAUUSD Live Dashboard</title>
+  <style>
+    :root { --bg: #0b0b0b; --card: #0f1720; --text: #e6eef6; --green: #7be495; --red: #ff6b6b; --gold: #ffdd57; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); margin:0; padding:16px; line-height:1.5; }
+    header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; }
+    h1 { margin:0; color: var(--green); font-size:28px; }
+    .btn { padding:10px 20px; background:var(--green); color:#000; border:none; border-radius:8px; font-weight:bold; cursor:pointer; font-size:15px; }
+    .btn:disabled { background:#555; cursor:not-allowed; }
+    .row { display:flex; gap:20px; flex-wrap:wrap; }
+    .card { background:var(--card); border-radius:12px; padding:16px; box-shadow:0 8px 32px rgba(0,0,0,0.6); flex:1; min-width:300px; }
+    #chart { height:460px; border-radius:8px; overflow:hidden; }
+    .price { font-size:28px; font-weight:bold; color:var(--gold); }
+    .signal-box { background:rgba(123,228,149,0.1); border:1px solid var(--green); border-radius:8px; padding:12px; font-family:monospace; white-space:pre-wrap; }
+    .status { margin-left:12px; font-weight:bold; }
+    table { width:100%; border-collapse:collapse; margin-top:8px; }
+    th, td { padding:8px; text-align:left; border-bottom:1px solid rgba(255,255,255,0.05); }
+    .green { color:#6ef08a; } .red { color:#ff6b6b; }
+    .small { font-size:13px; opacity:0.9; }
+  </style>
+  <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+
+<header>
+  <h1>Golden Lion — XAUUSD Live</h1>
+  <div style="display:flex; align-items:center; gap:16px;">
+    <div>Local Time: <strong id="clock">--:--:--</strong></div>
+    <button id="genBtn" class="btn">Generate Signal Now</button>
+    <span id="status" class="status"></span>
+  </div>
+</header>
+
+<div class="row">
+  <div class="card" style="flex:2;">
+    <h2 style="margin-top:0; color:var(--green);">XAUUSD 5M Chart (TradingView Feed)</h2>
+    <div id="chart"></div>
+    <div style="margin-top:12px; display:flex; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+      <div>Price: <span class="price" id="price">-</span></div>
+      <div>Change: <span id="change">-</span></div>
+      <div>Signal: <strong id="signalLabel">Waiting...</strong></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Latest Signal</h3>
+    <div id="signalBox" class="signal-box">No signal generated yet. Click "Generate Signal Now" to scan.</div>
+  </div>
+</div>
+
+<script>
+// Live Clock
+setInterval(() => {
+  document.getElementById('clock').textContent = new Date().toLocaleTimeString();
+}, 1000);
+
+// Chart Setup
+const chart = LightweightCharts.createChart(document.getElementById('chart'), {
+  layout: { background: { color: '#0f1720' }, textColor: '#dfefff' },
+  grid: { vertLines: { color: '#222' }, horzLines: { color: '#222' } },
+  crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+  timeScale: { borderColor: '#333' },
+  rightPriceScale: { borderColor: '#333' }
+});
+
+const candleSeries = chart.addCandlestickSeries({
+  upColor: '#26a69a', downColor: '#ef5350', borderVisible: false,
+  wickUpColor: '#26a69a', wickDownColor: '#ef5350'
+});
+
+// State
+let lastPrice = null;
+
+// === FETCH CANDLES FROM PYTHON BACKEND ===
+async function loadCandles() {
+  try {
+    const res = await fetch('http://localhost:8000/candles');
+    const data = await res.json();
+    if (data.candles && data.candles.length > 0) {
+      const formatted = data.candles.map(c => ({
+        time: c.time,
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close
+      }));
+      candleSeries.setData(formatted);
+      lastPrice = data.candles[data.candles.length - 1].close;
+      updatePrice(lastPrice);
+      chart.timeScale().fitContent();
+    }
+  } catch (e) {
+    console.log("Chart not ready yet (waiting for backend)...");
+  }
+}
+
+// === UPDATE PRICE DISPLAY ===
+function updatePrice(price) {
+  document.getElementById('price').textContent = price.toFixed(3);
+  if (lastPrice !== null) {
+    const change = ((price - lastPrice) / lastPrice * 100).toFixed(2);
+    const el = document.getElementById('change');
+    el.textContent = (change > 0 ? '+' : '') + change + '%';
+    el.className = change > 0 ? 'green' : 'red';
+  }
+  lastPrice = price;
+}
+
+// === FETCH LATEST SIGNAL ===
+async function loadSignal() {
+  try {
+    const res = await fetch('http://localhost:8000/latest_signal');
+    const sig = await res.json();
+    if (sig && sig.Side) {
+      const text = `SIDE     : ${sig.Side}
+TYPE     : ${sig.Type}
+SCORE    : ${sig.Score}%
+ENTRY    : ${sig.Entry}
+TP       : ${sig.TP}
+SL       : ${sig.SL}
+TRAIL    : ${sig.Trail}
+LIQ      : ${sig.Liq}
+TIME     : ${sig.Time}`;
+
+      document.getElementById('signalBox').textContent = text;
+      document.getElementById('signalLabel').textContent = `${sig.Side} ${sig.Type} (${sig.Score}%)`;
+      document.getElementById('signalLabel').style.color = sig.Side === 'Buy' ? '#6ef08a' : '#ff6b6b';
+    }
+  } catch (e) {
+    document.getElementById('signalBox').textContent = "Backend not running or no signal yet.";
+  }
+}
+
+// === GENERATE SIGNAL BUTTON ===
+document.getElementById('genBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('genBtn');
+  const status = document.getElementById('status');
+  btn.disabled = true;
+  status.textContent = 'Scanning...';
+  status.style.color = '#ffdd57';
+
+  try {
+    const res = await fetch('http://localhost:8000/trigger', { method: 'POST' });
+    if (res.ok) {
+      status.textContent = 'Signal generated!';
+      status.style.color = '#7be495';
+      setTimeout(loadSignal, 2000);
+      setTimeout(loadCandles, 1500);
+    } else {
+      status.textContent = 'Failed';
+      status.style.color = '#ff6b6b';
+    }
+  } catch (e) {
+    status.textContent = 'Backend offline';
+    status.style.color = '#ff6b6b';
+  }
+
+  setTimeout(() => {
+    btn.disabled = false;
+    status.textContent = '';
+  }, 5000);
+});
+
+// Initial load
+loadCandles();
+loadSignal();
+setInterval(loadCandles, 30000);  // Refresh chart every 30s
+setInterval(loadSignal, 10000);   // Check signal every 10s
+</script>
+
+</body>
+</html>
