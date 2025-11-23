@@ -1,0 +1,17 @@
+[
+  {
+    "Symbol": "ETHUSDT",
+    "Side": "Sell",
+    "Type": "Swing",
+    "Score": 40.0,
+    "Entry": 2771.280176,
+    "TP": 2729.710973,
+    "SL": 2812.849378,
+    "Trail": 2776.822736,
+    "Margin": 5.0,
+    "Market": 2743.89,
+    "Liq": 2909.844184,
+    "BB Slope": "Flat",
+    "Time": "2025-11-22 01:44 UTC+3"
+  }
+]
